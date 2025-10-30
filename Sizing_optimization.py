@@ -212,7 +212,6 @@ def calc_opex(pos, n_part_EMS_opex, no_time_instances, Batt_cap_siz_max_opex, Ba
         )
     else: #Energy-throughput battery degradation model
         Batt_cap_new, degr_cost_batt = calc_degr(Batt_powers[:,:24],Batt_cap_siz_max_opex,Batt_cap_degr_loc2)
-        #total_ch_new, total_q_new, loss_calendar_new, loss_cyclic_lt_new, loss_cyclic_ht_new, derivative_q_ch_new, derivative_q_new = np.array([0.0,0.0,0.0,0.0,0.0,0.0,0.0])
         total_ch_new        = np.zeros(n_part_EMS_opex, dtype=np.float64)
         total_q_new         = np.zeros(n_part_EMS_opex, dtype=np.float64)
         derivative_q_ch_new = np.zeros(n_part_EMS_opex, dtype=np.float64)
@@ -241,7 +240,7 @@ def calc_opex(pos, n_part_EMS_opex, no_time_instances, Batt_cap_siz_max_opex, Ba
     Solar_growth = PV_cap_opex/5 #the reference of 5 kWp and 10kWh have been arbitrarily chosen
     Battery_energy_growth = Batt_cap_siz_max_opex/10
      
-    #Depending on the size the penalties have to be adjusted sometime
+    #Depending on the size the penalties are adjusted 
     if Solar_growth >2.9:
         Solar_multiplier_pb = 0.87 
         Solar_multiplier_soc = 0.97 
@@ -365,7 +364,7 @@ def dispatch_pso(sizing_limits,PV_pow_max_part,PV_cap_disp_loc, Ua_SOC_data_pso,
         min_bounds_EMS = [0, -Batt_pow_max_dispatch, 0]
         
         #Initialization of neighborhoods
-        n_neigh = 35 #35
+        n_neigh = 35 
         neighborhoods = np.zeros((n_part_EMS,n_neigh)) #Initialize the neighborhood array
         neighborhoods[:,0] = np.arange(n_part_EMS) #The first column lists the particles in an ascending order
         neighborhoods[:,1:] = np.array([np.random.choice(n_part_EMS, size=n_neigh - 1, replace=False) for _ in range(n_part_EMS)]) #The particles indicated in the first column are assigned with a neighborhood of 19 other random particles
@@ -373,7 +372,7 @@ def dispatch_pso(sizing_limits,PV_pow_max_part,PV_cap_disp_loc, Ua_SOC_data_pso,
         g_best_neigh_opex= np.ones(1000)*10**5 #Initial best opex of each neighborhood
         g_best_neigh_pos = np.zeros(pos_EMS.shape)
         flag = 0
-        vel_max_EMS_array = np.array([0.125*Solar_vel_multiplier, 0.125*Battery_power_growth, 1*Load_multiplier_20])
+        vel_max_EMS_array = np.array([0.125*Solar_vel_multiplier, 0.125*Battery_power_growth, 1*Load_multiplier_20]) #Maximum velocity limits for the particles
         for i_EMS in range(max_iter_EMS):  # EMS PSO starts
             if i_EMS > conv_threshold_EMS and flag == 0: #after certain amount of iterations reduce the maximum velocity to limit the exploration space and allow for finding the solution more accurately
                 vel_max_EMS_array = vel_max_EMS_array/2
@@ -551,17 +550,16 @@ def dispatch_RB(sizing_limits, PV_pow_max_RB, Load_rb_loc, degr_type, Ua_SOC_dat
 
 
 def calc_NPC(pos_siz_NPC, capex_NPC, opex_1y, Batt_cap_degr_NPC, fuel_cost_fraction_NPC, total_ch_NPC, total_q_NPC, loss_cal_NPC, loss_cyc_lt_NPC, loss_cyc_ht_NPC, degr_type, degr_cost_sw_NPC, no_pen): #need to adjust for the growth in load and degradation of solar panels
-    try:
-        batt_cap = pos_siz_NPC[0] #if the sizing is for more than one component
-    except IndexError:
-        batt_cap = pos_siz_NPC #if sizing is only for the battery
+    
+    batt_cap = pos_siz_NPC[0] 
     discount_rate = 0.08
     inflation_rate = 1.02
     lifetime = 20 #years
+    
     #Battery lifetime estimation
     total_loss_fut = np.zeros(lifetime+1)
     degr_cost_batt_NPC = np.zeros(lifetime)
-    if degr_type == 0: #if simple
+    if degr_type == 0: #energy throughput battery degradation model
         Delta_SOH = 0.2
         SOH_1y = (1 - (Batt_cap_degr_NPC/batt_cap))/no_of_days*365 #SOH after 1 year #SOH after 1 year
         if SOH_1y == 0 or Delta_SOH/SOH_1y > 100:
@@ -572,7 +570,7 @@ def calc_NPC(pos_siz_NPC, capex_NPC, opex_1y, Batt_cap_degr_NPC, fuel_cost_fract
             total_loss_fut[n0] = SOH_1y*(n0+1)
             if n0>0:
                 degr_cost_batt_NPC[n0-1] = (total_loss_fut[n0]-total_loss_fut[n0-1])*batt_cap*Batt_cost_siz_energy/0.2
-    else:
+    else: #semi-empirical model
         loss_cyc_lt_fut = 0
         loss_cyc_ht_fut = 0
         for n in range(lifetime+1):
@@ -620,29 +618,26 @@ def pso_sizing(EMS_strategy_pso, year_opt_pso, PV_cap, no_of_days_siz, degr_type
     i_break_siz = max_iter_siz
     g_best_cost_siz = 10**5
     #Initialization of the sizing PSO 
-    if year_opt_pso == lifetime: #Optimization at year 20 -> get the cap of solar panels and battery
-        n_part_siz = 49 # should be a square of an integer for an optimal initialization
-        n_rep_siz = round(np.sqrt(n_part_siz))
-        p_best_cost_siz = np.ones(n_part_siz)*10**5
-        n_dim_siz = 2
-        vel_siz = np.zeros((n_part_siz,n_dim_siz))
-        vel_max_siz_array = np.array([2,2])
-        p_best_pos_siz = np.zeros((n_part_siz,n_dim_siz))
-        g_best_pos_siz = np.zeros(n_dim_siz)
-        max_bounds_siz = [Batt_cap_max,PV_power_max_siz]
-        min_bounds_siz = [0.01,0]
-        pos_siz = np.zeros((n_part_siz,n_dim_siz))
-        pos_siz[:,0] = np.tile(np.linspace(min_bounds_siz[0],Batt_cap_max,n_rep_siz),n_rep_siz)
-        pos_siz[:,1] = np.linspace(0,PV_power_max_siz,n_rep_siz).repeat(n_rep_siz)
-          
-        
+    
+    n_part_siz = 49 # should be a square of an integer for an optimal initialization
+    n_rep_siz = round(np.sqrt(n_part_siz))
+    p_best_cost_siz = np.ones(n_part_siz)*10**5
+    n_dim_siz = 2
+    vel_siz = np.zeros((n_part_siz,n_dim_siz))
+    vel_max_siz_array = np.array([2,2])
+    p_best_pos_siz = np.zeros((n_part_siz,n_dim_siz))
+    g_best_pos_siz = np.zeros(n_dim_siz)
+    max_bounds_siz = [Batt_cap_max,PV_power_max_siz]
+    min_bounds_siz = [0.01,0]
+    pos_siz = np.zeros((n_part_siz,n_dim_siz))
+    pos_siz[:,0] = np.tile(np.linspace(min_bounds_siz[0],Batt_cap_max,n_rep_siz),n_rep_siz)
+    pos_siz[:,1] = np.linspace(0,PV_power_max_siz,n_rep_siz).repeat(n_rep_siz)
+              
     g_best_cost_siz_over_time = np.zeros(max_iter_siz)
     g_best_pos_siz_over_time = np.zeros((max_iter_siz,n_dim_siz))
     
     #Sizing PSO starts
     for i_siz in range(max_iter_siz):
-        if i_siz == 24:
-            print("Last_iteration")
         print("Sizing iteration: ",i_siz)
         capex = calc_capex(pos_siz, allow_sw_degr_siz)
         if year_opt_pso == lifetime: #Calculate the corresponding pv output curve for the chosen solar capacity
@@ -703,8 +698,6 @@ start = time.time()
 
 #Solar Power - aquired from renewables.ninja in Benin 
 no_of_days = 4
-#pv_power_ready = np.load("pv_power_ready_new_2_morning.npy")
-#pv_power = pv_power_ready[:no_of_days]
 pv_power = np.load("PV_profile_40.npy")[:no_of_days,:]
 
 Ua_SOC_data = pd.read_csv("Anode_voltage_vs_SOC_v2.csv").to_numpy()
@@ -730,7 +723,6 @@ lifetime = 20
 Load_ready = np.load("repr_days_load_morning.npy") 
 Load_growth = 1.05 #per year
 Load_multiplier_20 = Load_growth**lifetime
-#Load = Load_ready[:no_of_days,:]/1000*Load_multiplier_20 #Year 20 -> change back to basic Load and implement the growth in the sizing func
 Load = np.zeros((no_of_days,24))
 Load[:int(no_of_days/2),:] = Load_ready[:int(no_of_days/2),:]
 Load[int(no_of_days/2):no_of_days,: ] = Load_ready[20:20+int(no_of_days/2),:] 
@@ -754,13 +746,11 @@ pow_cap_ratio = 0.35
 PV_power_max_siz = 25
 
 
-
-
 #Comment out the corresponding one
 #EMS_strategy = "RB" #Rule-based EMS
 EMS_strategy = "opt" #optimisation-based EMS
 
-#degr_type_batt_final =0 #simple
+#degr_type_batt_final =0 #energy-throughput
 degr_type_batt_final = 1 #"semi_emp"
 #allow_sw_degr_final = 0 #"no"
 allow_sw_degr_final = 1 # "yes"
@@ -772,20 +762,8 @@ else:
     from Switch_degr_func_v3 import extract_PV_curves_from_LUT, degr_switch, compute_v_index_fast
 
 Final_sys_size_20, year_batt_repl_1_v1,best_sizing_over_time_20, Best_NPC_20, Best_capex_20  = pso_sizing(EMS_strategy,year_opt,PV_power_max_siz, no_of_days, degr_type_batt_final, allow_sw_degr_final, Ua_SOC_data, PV_LUT, G_profile, T_profile, Gen_cost_curve)
-#Final_sys_size_20 = np.array([29.5,6.5])
+#Final_sys_size_20 = np.array([29.5,6.5]) #Uncomment this line and comment the line above to test only dispatch
 #year_batt_repl_1_v1 = 12
-
-# =============================================================================
-# #Load adjustment depending on the replacement year of the battery
-# Load_multiplier_20 = Load_growth**year_batt_repl_1_v1
-# Load = Load_ready[:no_of_days,:]/1000*Load_multiplier_20 #Year 20 -> change back to basic Load and implement the growth in the sizing func
-# Gen_pow_max = np.max(Load) #kW
-# print("Gen_pow_max_repl:", Gen_pow_max)
-# 
-# Final_sys_size_repl1, year_batt_repl_1, best_sizing_over_time_repl, Best_NPC_repl, Best_capex_20_repl = pso_sizing(EMS_strategy,year_batt_repl_1_v1,Final_sys_size_20[1],no_of_days, degr_type_batt_final, allow_sw_degr_final, Ua_SOC_data, PV_LUT, G_profile, T_profile, Gen_cost_curve)
-# 
-# =============================================================================
-
 
 end = time.time()
 Time_taken = end-start
