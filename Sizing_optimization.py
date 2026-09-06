@@ -139,7 +139,7 @@ def calc_opex(pos, n_part_EMS_opex, no_time_instances, Batt_cap_siz_max_opex, Ba
                     Gen_cost_curve,no_of_days_opex, Gen_pow_max, allow_sw_degr_opex, Load_multiplier_202):
     eff_ch = 0.98 #Charging efficiency
     eff_dis = 0.98 #Discharging efficieny
-    PV_cost_EMS = 0 #Operating cost of PV
+    PV_cost_EMS = 0 #Operation cost of PV
     
     # match the shapes your degr_switch returns
     rel_switch_degr = np.zeros(n_part_EMS_opex,      dtype=np.float64)  
@@ -273,7 +273,6 @@ def calc_opex(pos, n_part_EMS_opex, no_time_instances, Batt_cap_siz_max_opex, Ba
     
     opex_no_penalties = opex_particles + degr_cost_batt + degr_cost_switch
     opex = opex_particles + SOC_limit_breach * penalty_battery_limits_opex + power_balance_violation * penalty_power_balance_opex + degr_cost_batt + degr_cost_switch #opex calculation as a sum of the opeartional cost and the penalties
-
     return opex, New_SOC, Batt_cap_new, fuel_cost_array_opex, opex_no_penalties, \
            total_ch_new, total_q_new, derivative_q_ch_new, derivative_q_new, \
            loss_calendar_new, loss_cyclic_lt_new, loss_cyclic_ht_new, rel_switch_degr, T_switch_opex, degr_cost_switch
@@ -290,7 +289,7 @@ def dispatch_pso(sizing_limits,PV_pow_max_part,PV_cap_disp_loc, Ua_SOC_data_pso,
         PV_cap_dispatch = PV_cap_disp_loc
     
     n_part_EMS = 1000 #due to the way the particles are initialized the number of particles should be a cube of an integer
-    max_iter_EMS = 10
+    max_iter_EMS = 100
     c1_EMS = 2.6  # cognitive coefficient -> higher c1, higher exploration
     c2_EMS = 2 #social coefficient -> higher c2, higher exploitation   
     w_EMS = 0.8  # inertia -> higher w, higher exploration
@@ -298,38 +297,41 @@ def dispatch_pso(sizing_limits,PV_pow_max_part,PV_cap_disp_loc, Ua_SOC_data_pso,
     
     
     Batt_pow_max_dispatch = Batt_cap_max_dispatch*pow_cap_ratio
-    opex_over_time = np.zeros(no_of_days)
-    opex_no_penalties_over_time = np.zeros(no_of_days)
+
+    opex_over_time = np.zeros((no_of_days,1))
+    opex_no_penalties_over_time = np.zeros((no_of_days,1))
     Batt_cap_degr = Batt_cap_max_dispatch
-    Batt_cap_degr_over_time = np.zeros(no_of_days+1)
+    Batt_cap_degr_over_time = np.zeros((no_of_days+1,1))
     Batt_cap_degr_over_time[0] = Batt_cap_degr
-    SOC_over_days = np.zeros(no_of_days+1)
+    SOC_over_days = np.zeros((no_of_days+1,1))
     SOC_over_days[0] = Batt_SOC
     pos_EMS_over_time = np.zeros((no_of_days, 24, 3))
-    
-    total_ch_over_time = np.zeros(no_of_days+1)
+     
+    total_ch_over_time = np.zeros((no_of_days+1,1))
     total_ch_over_time[0] = 0
-    total_q_over_time = np.zeros(no_of_days+1)
+    total_q_over_time = np.zeros((no_of_days+1,1))
     total_q_over_time[0] = 0
-    der_qch_over_time = np.zeros(no_of_days+1)
+    der_qch_over_time = np.zeros((no_of_days+1,1))
     der_qch_over_time[0] = 0
-    der_q_over_time = np.zeros(no_of_days+1)
+    der_q_over_time = np.zeros((no_of_days+1,1))
     der_q_over_time[0] = 0
-    loss_cal_over_time = np.zeros(no_of_days+1)
+    loss_cal_over_time = np.zeros((no_of_days+1,1))
     loss_cal_over_time[0] = 0
-    loss_cyc_lt_over_time = np.zeros(no_of_days+1)
+    loss_cyc_lt_over_time = np.zeros((no_of_days+1,1))
     loss_cyc_lt_over_time[0] = 0
-    loss_cyc_ht_over_time = np.zeros(no_of_days+1)
+    loss_cyc_ht_over_time = np.zeros((no_of_days+1,1))
     loss_cyc_ht_over_time[0] = 0
-    switch_degr_over_time = np.zeros((no_of_days+1))
+    switch_degr_over_time = np.zeros((no_of_days+1,1))
     T_switch_over_time = np.zeros((no_of_days,24))
-    degr_cost_sw_over_time = np.zeros(no_of_days)
-    
+    degr_cost_sw_over_time = np.zeros((no_of_days,1))    
+    fuel_cost_over_time = np.zeros((no_of_days,1))
+
+
     # to keep track of the opex for convergence threshold
     opex_check = np.zeros((no_of_days, max_iter_EMS))
     t2_ind = 0
     i_EMS_break = np.ones(no_of_days)*max_iter_EMS
-    fuel_cost_over_time = np.zeros(no_of_days)
+    
     
     Solar_growth = PV_cap_dispatch/5 #the reference of 5 kWp has been chosen by tuning for such a size; the vel limit is then adjusted proportionally to the size change
     Battery_power_growth = Batt_pow_max_dispatch/3.5
@@ -377,15 +379,14 @@ def dispatch_pso(sizing_limits,PV_pow_max_part,PV_cap_disp_loc, Ua_SOC_data_pso,
             if i_EMS > conv_threshold_EMS and flag == 0: #after certain amount of iterations reduce the maximum velocity to limit the exploration space and allow for finding the solution more accurately
                 vel_max_EMS_array = vel_max_EMS_array/2
                 flag = 1
-
             opex, New_SOC_t2, Batt_cap_degr_array, fuel_cost_array, opex_no_penalties_pso, \
                 total_ch_pso_array, total_q_pso_array, der_q_ch_array, der_q_array, \
                 loss_cal_array, loss_cyclic_lt_array, loss_cyclic_ht_array, switch_degr_pso, T_switch_pso, degr_cost_sw_pso = calc_opex(pos_EMS, n_part_EMS, no_time_instances, 
-                                                                                       Batt_cap_max_dispatch, Batt_cap_degr_over_time[t2_ind], SOC_over_days[t2_ind], 
-                                                                                       Load_array, PV_max_array, PV_cap_dispatch, i_EMS, degr_type, Ua_SOC_data_pso, total_ch_over_time[t2_ind], 
-                                                                                       total_q_over_time[t2_ind],t2+1, der_qch_over_time[t2_ind], der_q_over_time[t2_ind], loss_cal_over_time[t2_ind], T_profile_pso[t2,:], 
+                                                                                       Batt_cap_max_dispatch, Batt_cap_degr_over_time[t2_ind][0], SOC_over_days[t2_ind][0], 
+                                                                                       Load_array, PV_max_array, PV_cap_dispatch, i_EMS, degr_type, Ua_SOC_data_pso, total_ch_over_time[t2_ind][0], 
+                                                                                       total_q_over_time[t2_ind][0],t2+1, der_qch_over_time[t2_ind][0], der_q_over_time[t2_ind][0], loss_cal_over_time[t2_ind][0], T_profile_pso[t2,:], 
                                                                                        PV_curves_rel_pso, Gen_cost_curve_pso, no_of_days_pso, Gen_pow_max_pso, allow_sw_degr_pso, Load_multiplier_20)
-    
+            
             opex_neigh = opex[neighborhoods]
             best_neigh_ind = np.argmin(opex_neigh,axis = 1) # the index of the minimum opex of each neighborhood
             best_neigh_opex = opex_neigh[np.arange(n_part_EMS),best_neigh_ind]
@@ -416,17 +417,35 @@ def dispatch_pso(sizing_limits,PV_pow_max_part,PV_cap_disp_loc, Ua_SOC_data_pso,
             vel_EMS = np.clip(vel_EMS, -vel_max_EMS_array, vel_max_EMS_array)
             # Update the position of the EMS particle
             pos_EMS = np.clip(pos_EMS + vel_EMS,min_bounds_EMS, max_bounds_EMS)
-        
+                     
         opex_over_time[t2_ind], SOC_over_days[t2_ind+1], Batt_cap_degr_over_time[t2_ind+1], fuel_cost_over_time[t2_ind], \
             opex_no_penalties_over_time[t2_ind], total_ch_over_time[t2_ind+1], \
             total_q_over_time[t2_ind + 1], der_qch_over_time[t2_ind+1], \
             der_q_over_time[t2_ind+1], loss_cal_over_time[t2_ind+1],loss_cyc_lt_over_time[t2_ind+1], \
-            loss_cyc_ht_over_time[t2_ind+1], switch_degr_over_time[t2_ind + 1], T_switch_over_time[t2_ind], degr_cost_sw_over_time[t2_ind] = calc_opex(np.array([g_best_neigh_pos[np.argmin(g_best_neigh_opex)]]), 1, no_time_instances, Batt_cap_max_dispatch, Batt_cap_degr_over_time[t2_ind], 
-                                                                                                                       SOC_over_days[t2_ind], np.array([Load[t2_ind]]), PV_max_array, PV_cap_dispatch, i_EMS, degr_type, Ua_SOC_data_pso, total_ch_over_time[t2_ind], 
-                                                                                                                       total_q_over_time[t2_ind] ,t2+1, der_qch_over_time[t2_ind], der_q_over_time[t2_ind] ,loss_cal_over_time[t2_ind], T_profile_pso[t2,:], 
+            loss_cyc_ht_over_time[t2_ind+1], switch_degr_over_time[t2_ind + 1], T_switch_over_time[t2_ind], degr_cost_sw_over_time[t2_ind] = calc_opex(np.array([g_best_neigh_pos[np.argmin(g_best_neigh_opex)]]), 1, no_time_instances, Batt_cap_max_dispatch, Batt_cap_degr_over_time[t2_ind][0], 
+                                                                                                                       SOC_over_days[t2_ind][0], np.array([Load[t2_ind]]), PV_max_array, PV_cap_dispatch, i_EMS, degr_type, Ua_SOC_data_pso, total_ch_over_time[t2_ind][0], 
+                                                                                                                       total_q_over_time[t2_ind][0] ,t2+1, der_qch_over_time[t2_ind][0], der_q_over_time[t2_ind][0] ,loss_cal_over_time[t2_ind][0], T_profile_pso[t2,:][0], 
                                                                                                                        PV_curves_rel_pso, Gen_cost_curve_pso, no_of_days_pso, Gen_pow_max_pso, allow_sw_degr_pso, Load_multiplier_20)
+        
         pos_EMS_over_time[t2_ind] = g_best_neigh_pos[np.argmin(g_best_neigh_opex)]
         t2_ind += 1
+    
+    #fixing the formatting for passing on to the other functions
+    opex_over_time = opex_over_time[:,0]
+    Batt_cap_degr_over_time = Batt_cap_degr_over_time[:,0]
+    opex_no_penalties_over_time = opex_no_penalties_over_time[:,0]
+    fuel_cost_over_time = fuel_cost_over_time[:,0]
+    total_ch_over_time = total_ch_over_time[:,0]
+    total_q_over_time = total_q_over_time[:,0]
+    loss_cal_over_time = loss_cal_over_time[:,0]
+    loss_cyc_lt_over_time = loss_cyc_lt_over_time[:,0]
+    loss_cyc_ht_over_time = loss_cyc_ht_over_time[:,0]
+    switch_degr_over_time = switch_degr_over_time[:,0]
+    T_switch_over_time = T_switch_over_time[:,0]
+    degr_cost_sw_over_time = degr_cost_sw_over_time[:,0]
+    
+    
+    
     return opex_over_time, pos_EMS_over_time, Batt_cap_degr_over_time, opex_check, i_EMS_break, \
         opex_no_penalties_over_time, np.sum(fuel_cost_over_time), total_ch_over_time[-1], total_q_over_time[-1], \
         loss_cal_over_time[-1], np.sum(loss_cyc_lt_over_time), np.sum(loss_cyc_ht_over_time), switch_degr_over_time, T_switch_over_time , np.sum(degr_cost_sw_over_time)
@@ -605,7 +624,7 @@ def calc_NPC(pos_siz_NPC, capex_NPC, opex_1y, Batt_cap_degr_NPC, fuel_cost_fract
 def pso_sizing(EMS_strategy_pso, year_opt_pso, PV_cap, no_of_days_siz, degr_type_batt_siz, allow_sw_degr_siz, Ua_SOC_data_siz, PV_LUT_siz, G_profile_siz, T_profile_siz, Gen_cost_curve_siz):
     
     #PSO parameters
-    max_iter_siz = 5
+    max_iter_siz = 10
     c1_siz = 2
     c2_siz = 2
     w_siz = 1
@@ -697,7 +716,7 @@ def pso_sizing(EMS_strategy_pso, year_opt_pso, PV_cap, no_of_days_siz, degr_type
 start = time.time()
 
 #Solar Power - aquired from renewables.ninja in Benin 
-no_of_days = 4
+no_of_days = 2
 pv_power = np.load("PV_profile_40.npy")[:no_of_days,:]
 
 Ua_SOC_data = pd.read_csv("Anode_voltage_vs_SOC_v2.csv").to_numpy()
@@ -777,7 +796,7 @@ print("Time taken:", Time_taken)
 PV_pow_max_final = Final_sys_size_20[1]*pv_power
 Ua_SOC_data = pd.read_csv("Anode_voltage_vs_SOC_v2.csv").to_numpy()
 
-if EMS_strategy == "opt":
+if EMS_strategy == "opt" and (Final_sys_size_20[0] != 0 and Final_sys_size_20[1]!= 0):
     time_new = time.perf_counter()
     opex_over_time_final, pos_EMS_over_time_final, Batt_cap_degr_over_time_final, opex_check_final, \
         i_EMS_break_final, opex_no_penalties_final, fuel_cost_final, total_ch_final, total_q_final, \
@@ -800,7 +819,7 @@ if EMS_strategy == "opt":
     print("New time:", time_new2-time_new)
     print("OPEX: ", opex_no_penalties_total_final/no_of_days)
     #print("NPC:", Best_NPC_20_no_pen )
-else: #RB dispatch
+elif EMS_strategy == "RB": #RB dispatch
     pv_power_rb_final = pv_power*Final_sys_size_20[1]
     dispatch_time_RB_start = time.perf_counter()
     opex_final, pos_EMS_over_time_final, SOC_over_time_final, Batt_cap_degr_over_time_final, P_curt_siz_final, fuel_cost_siz_final, total_ch_final, total_q_final, loss_cal_final, loss_cyc_lt_final, loss_cyc_ht_final,switch_degr_over_time_final, T_switch_over_time_final, degr_cost_sw_final = dispatch_RB(Final_sys_size_20,pv_power_rb_final,Load, degr_type_batt_final, Ua_SOC_data, T_profile, G_profile, PV_LUT, allow_sw_degr_final,Gen_cost_curve)
