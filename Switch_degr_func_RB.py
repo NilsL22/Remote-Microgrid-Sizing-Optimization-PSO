@@ -7,7 +7,7 @@ Created on Wed Aug  6 14:04:42 2025
 import numpy as np
 from numba import njit, prange
 from math import pow, exp
-import rainflow
+#import rainflow
 
 
 #@njit

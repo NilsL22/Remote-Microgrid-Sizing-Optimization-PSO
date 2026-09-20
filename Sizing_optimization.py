@@ -537,15 +537,17 @@ def dispatch_RB(sizing_limits, PV_pow_max_RB, Load_rb_loc, degr_type, Ua_SOC_dat
             SOC[t1,t2] = Prev_SOC - P_batt[t1,t2]/(Batt_cap_rb[t1]/time_step)*100
         P_PV_dispatched = PV_pow_max_RB - P_dump
         if degr_type == 1: #semi-empirical battery degradation model
-            Batt_cap_rb[t1+1], total_ch_new, total_q_new, loss_calendar_new, loss_cyclic_lt_new, loss_cyclic_ht_new, derivative_q_ch_new, derivative_q_new, degr_cost_tot_batt_RB[t1] = degr_semi_empirical_PSO(Batt_cap_rb[t1], np.array([P_batt[t1]]), np.array([SOC[t1]/100]) , Batt_cap_max_dispatch, total_ch_over_time_rb[t1], total_q_over_time_rb[t1], t1+1, der_qch_over_time_rb[t1], der_q_over_time_rb[t1], loss_cal_over_time_rb[t1], Ua_SOC_data_rb, no_of_days) 
+            Batt_cap_rb_temp, total_ch_new, total_q_new, loss_calendar_new, loss_cyclic_lt_new, loss_cyclic_ht_new, derivative_q_ch_new, derivative_q_new, degr_cost_tot_batt_RB_temp = degr_semi_empirical_PSO(Batt_cap_rb[t1], np.array([P_batt[t1]]), np.array([SOC[t1]/100]) , Batt_cap_max_dispatch, total_ch_over_time_rb[t1], total_q_over_time_rb[t1], t1+1, der_qch_over_time_rb[t1], der_q_over_time_rb[t1], loss_cal_over_time_rb[t1], Ua_SOC_data_rb, no_of_days) 
+            Batt_cap_rb[t1 + 1] = Batt_cap_rb_temp[0]
+            degr_cost_tot_batt_RB[t1] = degr_cost_tot_batt_RB_temp[0]
             
-            total_ch_over_time_rb[t1+1] = total_ch_new
-            total_q_over_time_rb[t1+1] = total_q_new
-            der_qch_over_time_rb[t1+1] = derivative_q_ch_new
-            der_q_over_time_rb[t1+1] = derivative_q_new
-            loss_cal_over_time_rb[t1+1] = loss_calendar_new
-            loss_cyc_lt_over_time_rb[t1+1] = loss_cyclic_lt_new
-            loss_cyc_ht_over_time_rb[t1+1] = loss_cyclic_ht_new
+            total_ch_over_time_rb[t1+1] = total_ch_new[0]
+            total_q_over_time_rb[t1+1] = total_q_new[0]
+            der_qch_over_time_rb[t1+1] = derivative_q_ch_new[0]
+            der_q_over_time_rb[t1+1] = derivative_q_new[0]
+            loss_cal_over_time_rb[t1+1] = loss_calendar_new[0]
+            loss_cyc_lt_over_time_rb[t1+1] = loss_cyclic_lt_new[0]
+            loss_cyc_ht_over_time_rb[t1+1] = loss_cyclic_ht_new[0]
         else: #energy-throughput battery degradation model
             Batt_cap_rb[t1+1], degr_cost_tot_batt_RB[t1] = calc_degr(np.array([P_batt[t1]]), Batt_cap_max_dispatch, Batt_cap_rb[t1]) #P_batt is put inside another matrix to match with the form of the calc_degr function
         
@@ -554,7 +556,9 @@ def dispatch_RB(sizing_limits, PV_pow_max_RB, Load_rb_loc, degr_type, Ua_SOC_dat
             if P_PV_dispatched[0,m] > 0:
                 P_actual_rel[0,m] = P_PV_dispatched[t1,m] / PV_pow_max_RB[t1,m]
         Vin_sw = compute_v_index_fast(P_actual_rel, PV_curves_rel_RB)
-        rel_switch_degr_RB[t1], degr_cost_tot_sw_RB[t1], T_switch_RB[t1,:] = degr_switch(PV_pow_max_RB[t1,:], P_actual_rel, Vin_sw, Batt_cap_max_dispatch, T_profile_day)
+        rel_switch_degr_RB_temp, degr_cost_tot_sw_RB_temp, T_switch_RB[t1,:] = degr_switch(PV_pow_max_RB[t1,:], P_actual_rel, Vin_sw, Batt_cap_max_dispatch, T_profile_day)
+        rel_switch_degr_RB[t1] = rel_switch_degr_RB_temp[0]
+        degr_cost_tot_sw_RB[t1] = degr_cost_tot_sw_RB_temp[0]
         
         if allow_sw_degr == 0:
             degr_cost_tot_sw_RB[t1] = 0
@@ -625,7 +629,7 @@ def calc_NPC(pos_siz_NPC, capex_NPC, opex_1y, Batt_cap_degr_NPC, fuel_cost_fract
 def pso_sizing(EMS_strategy_pso, year_opt_pso, PV_cap, no_of_days_siz, degr_type_batt_siz, allow_sw_degr_siz, Ua_SOC_data_siz, PV_LUT_siz, G_profile_siz, T_profile_siz, Gen_cost_curve_siz):
     
     #PSO parameters
-    max_iter_siz = 20
+    max_iter_siz = 3
     c1_siz = 2
     c2_siz = 2
     w_siz = 1
@@ -767,8 +771,8 @@ PV_power_max_siz = 25
 
 
 #Comment out the corresponding one
-#EMS_strategy = "RB" #Rule-based EMS
-EMS_strategy = "opt" #optimisation-based EMS
+EMS_strategy = "RB" #Rule-based EMS
+#EMS_strategy = "opt" #optimisation-based EMS
 
 #degr_type_batt_final =0 #energy-throughput
 degr_type_batt_final = 1 #"semi_emp"
@@ -833,8 +837,15 @@ elif EMS_strategy == "RB": #RB dispatch
         SOC_over_time_final[n] = SOC_over_time_final[n-1] - Batt_power_final[n-1]/Final_sys_size_20[0]*100 
     P_curtailed_final_total = np.sum(P_curt_siz_final)
     
+    size_check = 0
+    if len(Final_sys_size_20) == 2:
+        Final_sys_size_20 = np.array([Final_sys_size_20])
+        size_check = 1
+    
     Best_capex_20 = calc_capex(Final_sys_size_20,1)
     Best_capex_20 = np.sum(Best_capex_20)
+    if size_check == 1:
+        Final_sys_size_20 = Final_sys_size_20[0]
     #Best_NPC_20, year_batt_repl_final_NPC = calc_NPC(Final_sys_size_20, Best_capex_20, opex_final, Batt_cap_degr_over_time_final[-1], 1, total_ch_final, total_q_final, loss_cal_final, loss_cyc_lt_final, loss_cyc_ht_final, degr_type_batt_final,degr_cost_sw_final)
     print("OPEX: ", opex_final/no_of_days)
     #print("NPC: ", Best_NPC_20)
@@ -864,15 +875,16 @@ run_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 results_folder = Path("..") / "Results" / run_time
 results_folder.mkdir(parents=True, exist_ok=True)
 
-np.savez(results_folder / "optimization_results.npz",
-         Final_sys_size_20_save=Final_sys_size_20,
-         pos_EMS_over_time_final_save=pos_EMS_over_time_final,
-         Batt_cap_degr_over_time_final_save=Batt_cap_degr_over_time_final,
-         PV_pow_max_final_save = PV_pow_max_final,
-         switch_degr_over_time_final_save = switch_degr_over_time_final,
-         Best_NPC_20_save = Best_NPC_20,
-         i_EMS_break_final_save = i_EMS_break_final,
-         SOC_over_time_final_save = SOC_over_time_final)
+if EMS_strategy == "opt":
+    np.savez(results_folder / "optimization_results.npz",
+             Final_sys_size_20_save=Final_sys_size_20,
+             pos_EMS_over_time_final_save=pos_EMS_over_time_final,
+             Batt_cap_degr_over_time_final_save=Batt_cap_degr_over_time_final,
+             PV_pow_max_final_save = PV_pow_max_final,
+             switch_degr_over_time_final_save = switch_degr_over_time_final,
+             Best_NPC_20_save = Best_NPC_20,
+             i_EMS_break_final_save = i_EMS_break_final,
+             SOC_over_time_final_save = SOC_over_time_final)
 
 
 
