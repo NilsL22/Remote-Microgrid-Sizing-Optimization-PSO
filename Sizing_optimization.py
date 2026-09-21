@@ -629,7 +629,7 @@ def calc_NPC(pos_siz_NPC, capex_NPC, opex_1y, Batt_cap_degr_NPC, fuel_cost_fract
 def pso_sizing(EMS_strategy_pso, year_opt_pso, PV_cap, no_of_days_siz, degr_type_batt_siz, allow_sw_degr_siz, Ua_SOC_data_siz, PV_LUT_siz, G_profile_siz, T_profile_siz, Gen_cost_curve_siz):
     
     #PSO parameters
-    max_iter_siz = 3
+    max_iter_siz = 30
     c1_siz = 2
     c2_siz = 2
     w_siz = 1
@@ -771,8 +771,8 @@ PV_power_max_siz = 25
 
 
 #Comment out the corresponding one
-EMS_strategy = "RB" #Rule-based EMS
-#EMS_strategy = "opt" #optimisation-based EMS
+#EMS_strategy = "RB" #Rule-based EMS
+EMS_strategy = "opt" #optimisation-based EMS
 
 #degr_type_batt_final =0 #energy-throughput
 degr_type_batt_final = 1 #"semi_emp"
@@ -786,7 +786,8 @@ else:
     from Switch_degr_func_v3 import extract_PV_curves_from_LUT, degr_switch, compute_v_index_fast
 
 Final_sys_size_20, year_batt_repl_1_v1,best_sizing_over_time_20, Best_NPC_20, Best_capex_20  = pso_sizing(EMS_strategy,year_opt,PV_power_max_siz, no_of_days, degr_type_batt_final, allow_sw_degr_final, Ua_SOC_data, PV_LUT, G_profile, T_profile, Gen_cost_curve)
-#Final_sys_size_20 = np.array([29.5,6.5]) #Uncomment this line and comment the line above to test only dispatch
+#Final_sys_size_20 = np.array([22.7,4.08]) #Uncomment this line and comment the line above to test only dispatch
+#Best_capex_20 = calc_capex(np.array([Final_sys_size_20]),1)
 #year_batt_repl_1_v1 = 12
 
 end = time.time()
@@ -796,6 +797,7 @@ print("Time taken:", Time_taken)
 ##############################################################################################
 
 #Solve the optimal power flow again for the optimal sizing
+
 
  
 PV_pow_max_final = Final_sys_size_20[1]*pv_power
@@ -818,12 +820,12 @@ if EMS_strategy == "opt" and (Final_sys_size_20[0] != 0 and Final_sys_size_20[1]
         SOC_over_time_final[n] = SOC_over_time_final[n-1] - Batt_power_final[n-1]/Final_sys_size_20[0]*100 
     Power_balance_final = np.sum(pos_EMS_over_time_final,axis = 2)-Load
     Rel_power_balance_error = np.sum(abs(Power_balance_final))/np.sum(Load)
-    #Best_NPC_20_no_pen, year_batt_repl_final_NPC = calc_NPC(Final_sys_size_20, Best_capex_20, opex_no_penalties_total_final, Batt_cap_degr_over_time_final[-1], 1, total_ch_final, total_q_final, loss_cal_final, loss_cyc_lt_final, loss_cyc_ht_final, degr_type_batt_final,degr_cost_sw_final,'yes')
+    Best_NPC_20_no_pen, year_batt_repl_final_NPC = calc_NPC(Final_sys_size_20, Best_capex_20, opex_no_penalties_total_final, Batt_cap_degr_over_time_final[-1], 1, total_ch_final, total_q_final, loss_cal_final, loss_cyc_lt_final, loss_cyc_ht_final, degr_type_batt_final,degr_cost_sw_final,'yes')
     P_curtailed_final = np.where(PV_pow_max_final - pos_EMS_over_time_final[:,:,0] > 0, PV_pow_max_final - pos_EMS_over_time_final[:,:,0], 0)
     P_curtailed_final_total = np.sum(P_curtailed_final)
     print("New time:", time_new2-time_new)
     print("OPEX: ", opex_no_penalties_total_final/no_of_days)
-    #print("NPC:", Best_NPC_20_no_pen )
+    print("NPC:", Best_NPC_20_no_pen )
 elif EMS_strategy == "RB": #RB dispatch
     pv_power_rb_final = pv_power*Final_sys_size_20[1]
     dispatch_time_RB_start = time.perf_counter()
@@ -846,9 +848,9 @@ elif EMS_strategy == "RB": #RB dispatch
     Best_capex_20 = np.sum(Best_capex_20)
     if size_check == 1:
         Final_sys_size_20 = Final_sys_size_20[0]
-    #Best_NPC_20, year_batt_repl_final_NPC = calc_NPC(Final_sys_size_20, Best_capex_20, opex_final, Batt_cap_degr_over_time_final[-1], 1, total_ch_final, total_q_final, loss_cal_final, loss_cyc_lt_final, loss_cyc_ht_final, degr_type_batt_final,degr_cost_sw_final)
+    Best_NPC_20, year_batt_repl_final_NPC = calc_NPC(Final_sys_size_20, Best_capex_20, opex_final, Batt_cap_degr_over_time_final[-1], 1, total_ch_final, total_q_final, loss_cal_final, loss_cyc_lt_final, loss_cyc_ht_final, degr_type_batt_final,degr_cost_sw_final,"yes")
     print("OPEX: ", opex_final/no_of_days)
-    #print("NPC: ", Best_NPC_20)
+    print("NPC: ", Best_NPC_20)
 no_of_years = 10
 if degr_type_batt_final == 1: # "semi_emp":
     plots_option = "yes"
@@ -857,10 +859,7 @@ else:
     total_loss_2 = (1 - Batt_cap_degr_over_time_final[-1]/Batt_cap_degr_over_time_final[0])/no_of_days*3650
 
     
-#print("CAPEX: ", Best_capex_20)
-
-#print("NPC: ", Best_NPC_20)
-#print("NPC: ", Best_NPC_20_no_pen)
+print("CAPEX: ", Best_capex_20)
 print("PV capacity: ", Final_sys_size_20[1])
 print("Battery capacity: ", Final_sys_size_20[0])
 print("Battery throughput per day: ", np.sum(abs(pos_EMS_over_time_final[:,:,1])/no_of_days))
@@ -882,9 +881,14 @@ if EMS_strategy == "opt":
              Batt_cap_degr_over_time_final_save=Batt_cap_degr_over_time_final,
              PV_pow_max_final_save = PV_pow_max_final,
              switch_degr_over_time_final_save = switch_degr_over_time_final,
-             Best_NPC_20_save = Best_NPC_20,
+             Best_NPC_20_save = Best_NPC_20_no_pen,
              i_EMS_break_final_save = i_EMS_break_final,
-             SOC_over_time_final_save = SOC_over_time_final)
+             SOC_over_time_final_save = SOC_over_time_final,
+             run_time_save = run_time,
+             degr_type_final_save = degr_type_batt_final,
+             allow_sw_degr_final_save = allow_sw_degr_final,
+             no_of_days_final_save = no_of_days)
+    print("Results saved")
 
 
 
