@@ -484,7 +484,7 @@ def dispatch_RB(sizing_limits, PV_pow_max_RB, Load_rb_loc, degr_type, Ua_SOC_dat
     P_batt = np.zeros(Load_rb_loc.shape)
     P_gen = np.zeros(Load_rb_loc.shape)
     P_dump = np.zeros(Load_rb_loc.shape)
-    forecast_horizon = 12 #the original paper considers a horizon of 12 
+    forecast_horizon = 1 #the original paper considers a horizon of 12 
     Batt_cap_rb = np.zeros(Load_rb_loc.shape[0]+1)
     Batt_cap_rb[0] = Batt_cap_max_dispatch
     degr_cost_tot_batt_RB = np.zeros(Load_rb_loc.shape[0])
@@ -508,7 +508,15 @@ def dispatch_RB(sizing_limits, PV_pow_max_RB, Load_rb_loc, degr_type, Ua_SOC_dat
             E_batt_left = (Prev_SOC)/100*Batt_cap_rb[t1]
             #Calculate the remaining load till the end of the horizon or the end of the day
             #TODO This does not fully match with the paper and needs to be fixed as the horizon of 12 hours should always be taken. Since representative days are taken one probably needs to use a copy of the same day.
-            E_load_left = np.sum(Load_rb_loc[t1,t2:min(t2+forecast_horizon, Load_rb_loc.shape[1]-t2)])
+            
+            if (t2 + forecast_horizon) <  Load_rb_loc.shape[1]:
+                E_load_left = np.sum(Load_rb_loc[t1,t2:t2+forecast_horizon]) #if the forecast horizon is in the same day
+            elif (t1 < Load_rb_loc.shape[0]-1):
+                horizon_overshoot = forecast_horizon-(Load_rb_loc.shape[1]-t2) #calculate how much does the forecast go into the next day
+                E_load_left = np.sum(Load_rb_loc[t1,t2:]) + np.sum(Load_rb_loc[t1+1,:horizon_overshoot]) #add the load from the remainder of the day and the start of the next day
+            else:
+                E_load_left = np.sum(Load_rb_loc[t1,t2:]) + np.sum(Load_rb_loc[t1,:horizon_overshoot])
+            #E_load_left = np.sum(Load_rb_loc[t1,t2:min(t2+forecast_horizon, Load_rb_loc.shape[1]-t2)]) #old version which does not account for load of the next day
             P_batt_max_ch = min(Batt_max_pow_rb, (Batt_cap_rb[t1]*SOC_limit_high/100-E_batt_left)/time_step)
             P_batt_max_dis = min(Batt_max_pow_rb, ((Prev_SOC-SOC_limit_low)/100)*Batt_cap_rb[t1]/time_step)
             if PV_pow_max_RB[t1,t2] > 0:
@@ -549,8 +557,9 @@ def dispatch_RB(sizing_limits, PV_pow_max_RB, Load_rb_loc, degr_type, Ua_SOC_dat
             loss_cyc_lt_over_time_rb[t1+1] = loss_cyclic_lt_new[0]
             loss_cyc_ht_over_time_rb[t1+1] = loss_cyclic_ht_new[0]
         else: #energy-throughput battery degradation model
-            Batt_cap_rb[t1+1], degr_cost_tot_batt_RB[t1] = calc_degr(np.array([P_batt[t1]]), Batt_cap_max_dispatch, Batt_cap_rb[t1]) #P_batt is put inside another matrix to match with the form of the calc_degr function
-        
+            Batt_cap_rb_ind, degr_cost_tot_batt_RB_ind = calc_degr(np.array([P_batt[t1]]), Batt_cap_max_dispatch, Batt_cap_rb[t1]) #P_batt is put inside another matrix to match with the form of the calc_degr function
+            Batt_cap_rb[t1+1] = Batt_cap_rb_ind[0]
+            degr_cost_tot_batt_RB[t1] = degr_cost_tot_batt_RB_ind[0]
         P_actual_rel = np.zeros((1,24))
         for m in range(24):
             if P_PV_dispatched[0,m] > 0:
@@ -721,7 +730,7 @@ def pso_sizing(EMS_strategy_pso, year_opt_pso, PV_cap, no_of_days_siz, degr_type
 start = time.time()
 
 #Solar Power - aquired from renewables.ninja in Benin 
-no_of_days = 10
+no_of_days = 16 #Has to be an even number
 pv_power = np.load("PV_profile_40.npy")[:no_of_days,:]
 
 Ua_SOC_data = pd.read_csv("Anode_voltage_vs_SOC_v2.csv").to_numpy()
@@ -732,7 +741,8 @@ T_profile = T_profile_rounded[:no_of_days,:]
 
 #Fuel consumption curve
 carbon_tax = 1
-Diesel_price_lit = 0.7*1.2*carbon_tax
+#Diesel_price_lit = 0.7*1.2*carbon_tax
+Diesel_price_lit = 1.2*carbon_tax
 Fuel_eff_curve = np.load("Fuel_efficiency_curve_L_kWh.npy")
 Gen_cost_curve = np.zeros((1000, 2))
 Gen_cost_curve[:, 0] = np.linspace(0, 1, 1000)
@@ -786,7 +796,7 @@ else:
     from Switch_degr_func_v3 import extract_PV_curves_from_LUT, degr_switch, compute_v_index_fast
 
 Final_sys_size_20, year_batt_repl_1_v1,best_sizing_over_time_20, Best_NPC_20, Best_capex_20  = pso_sizing(EMS_strategy,year_opt,PV_power_max_siz, no_of_days, degr_type_batt_final, allow_sw_degr_final, Ua_SOC_data, PV_LUT, G_profile, T_profile, Gen_cost_curve)
-#Final_sys_size_20 = np.array([22.7,4.08]) #Uncomment this line and comment the line above to test only dispatch
+#Final_sys_size_20 = np.array([25.6,5.5]) #Uncomment this line and comment the line above to test only dispatch
 #Best_capex_20 = calc_capex(np.array([Final_sys_size_20]),1)
 #year_batt_repl_1_v1 = 12
 
@@ -823,7 +833,7 @@ if EMS_strategy == "opt" and (Final_sys_size_20[0] != 0 and Final_sys_size_20[1]
     Best_NPC_20_no_pen, year_batt_repl_final_NPC = calc_NPC(Final_sys_size_20, Best_capex_20, opex_no_penalties_total_final, Batt_cap_degr_over_time_final[-1], 1, total_ch_final, total_q_final, loss_cal_final, loss_cyc_lt_final, loss_cyc_ht_final, degr_type_batt_final,degr_cost_sw_final,'yes')
     P_curtailed_final = np.where(PV_pow_max_final - pos_EMS_over_time_final[:,:,0] > 0, PV_pow_max_final - pos_EMS_over_time_final[:,:,0], 0)
     P_curtailed_final_total = np.sum(P_curtailed_final)
-    print("New time:", time_new2-time_new)
+    print("EMS Time:", time_new2-time_new)
     print("OPEX: ", opex_no_penalties_total_final/no_of_days)
     print("NPC:", Best_NPC_20_no_pen )
 elif EMS_strategy == "RB": #RB dispatch
@@ -839,10 +849,14 @@ elif EMS_strategy == "RB": #RB dispatch
         SOC_over_time_final[n] = SOC_over_time_final[n-1] - Batt_power_final[n-1]/Final_sys_size_20[0]*100 
     P_curtailed_final_total = np.sum(P_curt_siz_final)
     
+    
     size_check = 0
     if len(Final_sys_size_20) == 2:
         Final_sys_size_20 = np.array([Final_sys_size_20])
         size_check = 1
+    
+    Power_balance_final = np.sum(pos_EMS_over_time_final,axis = 2)-Load
+    Rel_power_balance_error = np.sum(abs(Power_balance_final))/np.sum(Load)
     
     Best_capex_20 = calc_capex(Final_sys_size_20,1)
     Best_capex_20 = np.sum(Best_capex_20)
@@ -868,6 +882,7 @@ print("Total Battery Degradation: ", total_loss_2)
 print("Curtailed Power per day: ", P_curtailed_final_total/no_of_days)
 print("Total switch degradation: ", np.sum(switch_degr_over_time_final)/no_of_days*3650)
 print("Fraction of energy generated by fuel:", np.sum(pos_EMS_over_time_final[:,:,2])/(np.sum(pos_EMS_over_time_final[:,:,0])+np.sum(pos_EMS_over_time_final[:,:,2])))
+print("Relative Power Balance Error:", Rel_power_balance_error)
 
 #Create results folder and save results
 run_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -875,6 +890,8 @@ results_folder = Path("..") / "Results" / run_time
 results_folder.mkdir(parents=True, exist_ok=True)
 
 if EMS_strategy == "opt":
+    print("Saving to:", results_folder.resolve())
+    print("Folder exists:", results_folder.exists())
     np.savez(results_folder / "optimization_results.npz",
              Final_sys_size_20_save=Final_sys_size_20,
              pos_EMS_over_time_final_save=pos_EMS_over_time_final,
