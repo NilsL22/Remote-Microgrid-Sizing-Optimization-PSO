@@ -214,7 +214,7 @@ def extract_PV_curves_from_LUT(T_profile, G_profile, PV_LUT_loc):
 
     
 @njit(parallel=True)
-def degr_switch(P_PV_total, P_PV_dispatched, Vin_sw, PV_size, T_amb):
+def degr_switch(P_PV_total, P_PV_dispatched, Vin_sw, PV_size, T_amb, Inv_cost):
     A = 9.34*10**14
     b1, b2, b3, b4, b5, b6 = -4.416, 1285, -0.463, -0.716, -0.761, -0.5
     I_b = 10
@@ -236,21 +236,29 @@ def degr_switch(P_PV_total, P_PV_dispatched, Vin_sw, PV_size, T_amb):
     R_th_sum = 11.03
     
     n_rows, n_cols = Vin_sw.shape
-    inverter_cost = 500 * PV_size #The one in Samionta costs somewhere between 2000 and 2500
+    inverter_cost = Inv_cost * PV_size #The one in Samionta costs somewhere between 2000 and 2500
     D = 1 - Vin_sw/ V_out
     P_PV_total = P_PV_total * scale_factor*1000
     P_PV_dispatched = P_PV_dispatched * scale_factor*1000
 
     Iav = np.zeros((n_rows, n_cols))
     Isw = np.zeros((n_rows, n_cols))
+    Isc = 14.5
     
     for i in prange(n_rows):
         for j in range(n_cols):
             v = Vin_sw[i, j]
-            if v > 0:
+            if v > 0 and P_PV_total[j] > 2: #before: v == 0
                 Iav[i, j] = P_PV_total[j] * D[i, j] / v
                 Isw[i, j] = (D[i, j] * (P_PV_dispatched[i, j] / v) ** 2 +
                              (1 / 3) * (v * D[i, j] / (2 * fsw * L))) ** 0.5
+                if Isw[i,j] > Isc:
+                    Isw[i,j] = Isc
+                if Iav[i,j] > Isc:
+                    Iav[i,j] = Isc
+            elif v == 0 and P_PV_total[j] > 2: #before: v == 0 and P_PV_total[j] > 0:
+                Iav[i,j] = Isc
+                Isw[i,j] = Isc
     
     E_cond = VT * Iav + R_CE * Isw ** 2
     E_sw = fsw * (dynamics[0] + dynamics[1] * Iav + dynamics[2] * Isw ** 2) / 1000
